@@ -1,31 +1,11 @@
-QT       += core gui widgets
+QT       += core gui widgets sql
+
+DEFINES += STANDALONE_VEHICULES
 
 TARGET = Vehicules
 TEMPLATE = app
 
-SOURCES += \
-    main.cpp \
-    gvehicule.cpp \
-    personnel.cpp \
-    vehicule.cpp \
-    personneldialog.cpp \
-    vehiculedialog.cpp \
-    statsdialog.cpp \
-    pdfexport.cpp
-
-HEADERS += \
-    gvehicule.h \
-    personnel.h \
-    vehicule.h \
-    personneldialog.h \
-    vehiculedialog.h \
-    statsdialog.h \
-    pdfexport.h \
-    styleutils.h
-
-# Un seul fichier .ui
-FORMS += \
-    gvehicule.ui
-
-RESOURCES += \
-    resources.qrc
+SOURCES += main.cpp gsmartfirestation.cpp
+HEADERS += gsmartfirestation.h
+FORMS   += gsmartfirestation.ui
+RESOURCES += resources.qrc

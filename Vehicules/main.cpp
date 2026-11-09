@@ -1,4 +1,4 @@
-#include "gvehicule.h"
+#include "gsmartfirestation.h"
 
 #include <QApplication>
 #include <QFile>
@@ -14,7 +14,7 @@ int main(int argc, char *argv[])
     if (fichierStyle.open(QFile::ReadOnly | QFile::Text))
         a.setStyleSheet(QString::fromUtf8(fichierStyle.readAll()));
 
-    GVehicule fenetre;
+    GSmartFireStation fenetre;
     fenetre.show();
     return a.exec();
 }
