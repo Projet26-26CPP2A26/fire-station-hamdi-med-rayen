@@ -1,39 +1,42 @@
-SMART FIRE STATION — Qt + Oracle integration
+SMART FIRE STATION — Qt + Oracle integration (Module Véhicules)
 ================================================
 
-This project uses Qt SQL with the QOCI Oracle driver.
+This project uses Qt SQL with the QODBC driver (Oracle ODBC driver "Oracle in XE").
 
-1. Run the SQL schema
-   - Open database(1).sql in Oracle SQL Developer.
-   - Connect with the Oracle schema/user that will own the tables.
-   - Run the script using F5 / Run Script.
-   - The schema creates PERSONNEL, VEHICULE, MISSION, MISSION_PERSONNEL,
-     MISSION_VEHICULE, sequences, triggers, and sample rows.
+1. Prepare the database (Oracle SQL Developer, F5 = Run Script)
+   - Fresh database: run database.sql with the Oracle user that will own the
+     tables. It creates PERSONNEL, VEHICULE, MISSION, MISSION_PERSONNEL,
+     MISSION_VEHICULE, sequences, ID triggers, and sample rows.
+   - Existing database (5 tables already created from the old schema): run
+     mise_a_jour_personnel.sql ONCE instead. It adds the new Personnel columns
+     (mot_de_passe, question_secrete, reponse_secrete) and constraints.
+     Do NOT run both.
 
 2. Open the Qt project
-   - Open Vehicules.pro in Qt Creator.
-   - Select a Qt kit matching the installed Oracle QOCI plugin architecture.
+   - Open Vehicules.pro in Qt Creator (CMakeLists.txt is also provided).
+   - Select your Qt kit (e.g. Desktop Qt 6.12.0 MinGW 64-bit).
    - Run qmake / Configure Project, then build and run.
 
 3. First launch
-   - The application asks for Oracle host, port, SID/service, username, and password.
+   - The application asks for Oracle host, port, SID/service, username, password.
    - Defaults are localhost, 1521, and XE. Change them to match your Oracle setup.
    - The password is entered at runtime and is not saved in the project.
-   - If the QOCI plugin is missing, or the connection is cancelled/fails, the app
-     opens with demo data. Changes made in demo mode are not saved to Oracle.
+   - If the connection is cancelled or fails, the app opens with demo data.
+     Changes made in demo mode are not saved to Oracle.
 
-4. QOCI prerequisites
-   - Qt SQL module and the QOCI driver plugin must be installed for your exact Qt kit.
-   - Oracle Instant Client must be installed and available to the application.
-   - 32-bit/64-bit architecture and compiler/Qt kit must match.
-   - If connection fails, read the error message and verify the service name and
-     that the Oracle listener is running.
+4. QODBC prerequisites
+   - Qt SQL module and the QODBC driver plugin (included with Qt).
+   - Oracle ODBC driver "Oracle in XE" installed (Oracle Instant Client + ODBC
+     package), same architecture as your Qt kit (64-bit).
+   - If the connection fails, read the error message, verify the service name
+     and that the Oracle listener is running.
 
 Database mapping notes
 ----------------------
-- Oracle numeric IDs are shown as P001/P002... and V001/V002... in the UI.
-- The SQL schema does not have a password column, so the UI password field is not
-  persisted to Oracle.
-- Mission counts are calculated from MISSION_PERSONNEL and MISSION.
+- Oracle numeric IDs are shown as V001/V002... in the UI.
 - UI labels are mapped to schema values: Citerne <-> Camion-citerne and
   Bon <-> Operationnel.
+- The BEFORE INSERT triggers fill the IDs automatically (do not remove them:
+  the Qt INSERT statements do not provide id_vehicule).
+- Personnel test accounts (module Personnel): ahmed@station.tn / sami@station.tn,
+  password Admin123, secret answer "tunis" (stored as SHA-256 hashes).

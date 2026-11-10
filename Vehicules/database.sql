@@ -30,16 +30,30 @@ CREATE SEQUENCE seq_mission     START WITH 1 INCREMENT BY 1 NOCACHE;
 -- ---------------------------------------------------------------------
 
 -- Module 1 : Gestion du personnel
+-- mot_de_passe et reponse_secrete contiennent des empreintes SHA-256 (jamais le texte en clair).
 CREATE TABLE personnel (
-    id_personnel  NUMBER         PRIMARY KEY,
-    nom           VARCHAR2(50)   NOT NULL,
-    prenom        VARCHAR2(50)   NOT NULL,
-    grade         VARCHAR2(30),
-    poste         VARCHAR2(50),
-    telephone     VARCHAR2(15),
-    email         VARCHAR2(100),
-    disponibilite VARCHAR2(20)   DEFAULT 'Disponible' NOT NULL
+    id_personnel     NUMBER         PRIMARY KEY,
+    nom              VARCHAR2(50)   NOT NULL,
+    prenom           VARCHAR2(50)   NOT NULL,
+    grade            VARCHAR2(30),
+    poste            VARCHAR2(50),
+    telephone        VARCHAR2(15),
+    email            VARCHAR2(100)  NOT NULL,
+    mot_de_passe     VARCHAR2(255)  NOT NULL,
+    question_secrete VARCHAR2(200)  NOT NULL,
+    reponse_secrete  VARCHAR2(255)  NOT NULL,
+    disponibilite    VARCHAR2(20)   DEFAULT 'Disponible' NOT NULL,
+    -- Contraintes d'integrite (memes regles que le controle de saisie en C++)
+    CONSTRAINT ck_personnel_tel
+        CHECK (telephone IS NULL OR REGEXP_LIKE(REPLACE(REPLACE(telephone, ' ', ''), '-', ''), '^[0-9]{8}$')),
+    CONSTRAINT ck_personnel_email
+        CHECK (email LIKE '%@%' AND email LIKE '%.%'),
+    CONSTRAINT ck_personnel_dispo
+        CHECK (disponibilite IN ('Disponible', 'En mission') OR disponibilite LIKE 'En cong%')
 );
+
+-- L'email sert d'identifiant de connexion : unique, sans tenir compte des majuscules
+CREATE UNIQUE INDEX uq_personnel_email ON personnel (LOWER(email));
 
 -- Module 2 : Gestion des vehicules
 CREATE TABLE vehicule (
@@ -119,11 +133,14 @@ END;
 
 -- ---------------------------------------------------------------------
 -- 4. Donnees de test (pour verifier que tout fonctionne)
+--    Comptes de test : mot de passe = Admin123 ; reponse secrete = tunis
 -- ---------------------------------------------------------------------
-INSERT INTO personnel (nom, prenom, grade, poste, telephone, email, disponibilite)
-VALUES ('Ben Ali', 'Ahmed', 'Sergent', 'Pompier', '20123456', 'ahmed@station.tn', 'Disponible');
-INSERT INTO personnel (nom, prenom, grade, poste, telephone, email, disponibilite)
-VALUES ('Trabelsi', 'Sami', 'Lieutenant', 'Chef de garde', '22123456', 'sami@station.tn', 'Disponible');
+INSERT INTO personnel (nom, prenom, grade, poste, telephone, email, mot_de_passe, question_secrete, reponse_secrete, disponibilite)
+VALUES ('Ben Ali', 'Ahmed', 'Sergent', 'Intervention', '20123456', 'ahmed@station.tn',
+        '3b612c75a7b5048a435fb6ec81e52ff92d6d795a8b5a9c17070f6a63c97a53b2', 'Quelle est votre ville de naissance ?', '8a61db0590ce9ed7ae779dc39aaff2aece6bb0eb490e159ff44f4c7aa8e50b0c', 'Disponible');
+INSERT INTO personnel (nom, prenom, grade, poste, telephone, email, mot_de_passe, question_secrete, reponse_secrete, disponibilite)
+VALUES ('Trabelsi', 'Sami', 'Lieutenant', 'Chef de garde', '22123456', 'sami@station.tn',
+        '3b612c75a7b5048a435fb6ec81e52ff92d6d795a8b5a9c17070f6a63c97a53b2', 'Quelle est votre ville de naissance ?', '8a61db0590ce9ed7ae779dc39aaff2aece6bb0eb490e159ff44f4c7aa8e50b0c', 'Disponible');
 
 INSERT INTO vehicule (immatriculation, type_vehicule, modele, etat, disponibilite, date_maintenance)
 VALUES ('123 TUN 4567', 'Camion-citerne', 'Renault Midlum', 'Operationnel', 'Disponible',
