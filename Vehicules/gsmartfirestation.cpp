@@ -205,8 +205,25 @@ Vehicule::Vehicule(const QString &id, const QString &immatriculation, const QStr
 
 bool Vehicule::maintenanceProche() const
 {
-    QDate limite = QDate::currentDate().addDays(30);
-    return m_dateMaintenance.isValid() && m_dateMaintenance <= limite;
+    const QDate aujourdHui = QDate::currentDate();
+    const QDate limite = aujourdHui.addDays(30);
+    return m_dateMaintenance.isValid()
+        && m_dateMaintenance >= aujourdHui
+        && m_dateMaintenance <= limite;
+}
+
+// Vrai si la date de maintenance est strictement avant aujourd'hui
+bool Vehicule::maintenanceDepassee() const
+{
+    return m_dateMaintenance.isValid() && m_dateMaintenance < QDate::currentDate();
+}
+
+// Nombre de jours avant la maintenance (négatif si dépassée, 99999 si pas de date)
+int Vehicule::joursAvantMaintenance() const
+{
+    if (!m_dateMaintenance.isValid())
+        return 99999;
+    return int(QDate::currentDate().daysTo(m_dateMaintenance));
 }
 
 QStringList Vehicule::types()
@@ -257,56 +274,44 @@ QStringList Vehicule::typesPourIntervention(const QString &intervention)
 PieChartWidget::PieChartWidget(const QString &centerLabel, QWidget *parent)
     : QWidget(parent), m_centerLabel(centerLabel)
 {
-    setMinimumHeight(235);
-    setMinimumWidth(250);
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    setMinimumHeight(150); setMaximumHeight(160); setMinimumWidth(0);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    setAttribute(Qt::WA_OpaquePaintEvent, true);
 }
 void PieChartWidget::setData(const QStringList &labels, const QList<int> &values)
-{
-    m_labels = labels; m_values = values; update();
-}
+{ m_labels = labels; m_values = values; update(); }
 void PieChartWidget::paintEvent(QPaintEvent *)
 {
-    QPainter p(this);
-    p.setRenderHint(QPainter::Antialiasing, true);
-    const QColor colors[] = {QColor("#1F4E79"), QColor("#DC3C2D"), QColor("#2E7D32"), QColor("#E6A23C"), QColor("#7C3AED"), QColor("#0891B2"), QColor("#64748B"), QColor("#DB2777")};
-    int total = 0;
-    for (int v : m_values) total += qMax(0, v);
-    // Responsive layout: reserve a clear legend area and keep the circle fully visible.
-    const int legendWidth = qMin(190, qMax(112, width() * 46 / 100));
-    const int availablePie = qMax(90, width() - legendWidth - 24);
-    const int diameter = qMax(90, qMin(170, qMin(availablePie - 8, height() - 24)));
-    const int px = 8;
-    const int py = qMax(8, (height() - diameter) / 2);
-    QRectF pie(px, py, diameter, diameter);
-    if (total <= 0) {
-        p.setPen(QPen(QColor("#E5E7EB"), 18)); p.setBrush(Qt::NoBrush);
-        p.drawEllipse(pie.adjusted(10,10,-10,-10));
-        p.setPen(QColor("#64748B")); p.drawText(pie, Qt::AlignCenter, "Aucune donnée"); return;
-    }
-    int start = 90 * 16;
-    for (int i=0; i<m_values.size(); ++i) {
-        int val = qMax(0,m_values[i]); if (!val) continue;
-        int span = -qRound(360.0 * 16 * val / total);
-        p.setPen(QPen(Qt::white, 1.5)); p.setBrush(colors[i % 8]); p.drawPie(pie, start, span); start += span;
-    }
-    int hole = diameter / 3;
-    p.setPen(Qt::white); p.setBrush(Qt::white); p.drawEllipse(pie.adjusted(hole,hole,-hole,-hole));
-    p.setPen(QColor("#1F2937")); QFont f=p.font(); f.setBold(true); f.setPointSize(17); p.setFont(f);
-    p.drawText(QRectF(pie.x()+diameter/4, pie.y()+diameter/2-18, diameter/2, 24), Qt::AlignCenter, QString::number(total));
-    f.setBold(false); f.setPointSize(8); p.setFont(f); p.setPen(QColor("#64748B"));
-    p.drawText(QRectF(pie.x()+diameter/4, pie.y()+diameter/2+5, diameter/2, 18), Qt::AlignCenter, QStringLiteral("Total"));
-    const int legendX = px + diameter + 12;
-    const int lineHeight = qMin(28, qMax(20, (height()-16) / qMax(1,m_labels.size())));
-    f=p.font(); f.setPointSize(8); p.setFont(f);
-    for (int i=0; i<m_labels.size() && i<m_values.size(); ++i) {
-        int y = 8 + i * lineHeight;
-        p.setPen(Qt::NoPen); p.setBrush(colors[i%8]); p.drawRoundedRect(QRectF(legendX,y+5,9,9),2,2);
-        double pct = total ? (100.0*m_values[i]/total) : 0;
+    QPainter p(this); p.setRenderHint(QPainter::Antialiasing, true); p.fillRect(rect(), Qt::white);
+    const QColor colors[] = {QColor("#2F6FB3"),QColor("#E83B3B"),QColor("#36A269"),QColor("#E67E22"),QColor("#8055D6"),QColor("#0891B2"),QColor("#64748B"),QColor("#DB2777")};
+    int total=0; for(int v:m_values) total+=qMax(0,v);
+    const int d=qMin(112,qMax(88,height()-28)), px=4, py=(height()-d)/2; QRectF pie(px,py,d,d);
+    if(total>0){
+        int start=90*16;
+        for(int i=0;i<m_values.size();++i){int val=qMax(0,m_values[i]);if(!val)continue;int span=-qRound(360.0*16*val/total);p.setPen(QPen(Qt::white,1.5));p.setBrush(colors[i%8]);p.drawPie(pie,start,span);start+=span;}
+        int hole=d/3;p.setPen(Qt::NoPen);p.setBrush(Qt::white);p.drawEllipse(pie.adjusted(hole,hole,-hole,-hole));
+        QFont f=p.font();f.setBold(true);f.setPointSize(16);p.setFont(f);p.setPen(QColor("#1F2937"));p.drawText(QRectF(pie.x(),pie.y()+d/2-17,d,23),Qt::AlignCenter,QString::number(total));
+        f.setBold(false);f.setPointSize(8);p.setFont(f);p.setPen(QColor("#64748B"));p.drawText(QRectF(pie.x(),pie.y()+d/2+5,d,16),Qt::AlignCenter,QStringLiteral("Total"));
+    }else{p.setPen(QPen(QColor("#E5E7EB"),15));p.setBrush(Qt::NoBrush);p.drawEllipse(pie.adjusted(8,8,-8,-8));p.setPen(QColor("#64748B"));p.drawText(pie,Qt::AlignCenter,QStringLiteral("Aucune donnée"));}
+    // Légende en colonnes distinctes : libellé, quantité et pourcentage.
+    // Les colonnes ne se chevauchent plus (ex. "1 17 %" au lieu de "117 %").
+    QFont f=p.font(); f.setPointSize(9); p.setFont(f);
+    const int lx=120, rh=23;
+    const int labelX=lx+15;
+    const int percentX=width()-43;
+    const int countX=percentX-31;
+    const int labelWidth=qMax(48, countX-labelX-5);
+    for(int i=0;i<m_labels.size()&&i<m_values.size();++i){
+        int y=10+i*rh;
+        p.setPen(Qt::NoPen); p.setBrush(colors[i%8]);
+        p.drawEllipse(QRectF(lx,y+7,8,8));
         p.setPen(QColor("#334155"));
-        QString line = QString("%1  %2 (%3%)").arg(m_labels[i]).arg(m_values[i]).arg(qRound(pct));
-        QRectF textRect(legendX+14,y,width()-legendX-17,lineHeight);
-        p.drawText(textRect, Qt::AlignLeft|Qt::AlignVCenter|Qt::TextWordWrap, line);
+        const int value=qMax(0,m_values[i]);
+        const double pct=total?100.0*value/total:0.0;
+        p.drawText(QRectF(labelX,y,labelWidth,rh),Qt::AlignLeft|Qt::AlignVCenter,m_labels[i]);
+        p.drawText(QRectF(countX,y,23,rh),Qt::AlignRight|Qt::AlignVCenter,QString::number(value));
+        p.setPen(QColor("#64748B"));
+        p.drawText(QRectF(percentX,y,40,rh),Qt::AlignRight|Qt::AlignVCenter,QString("%1 %").arg(qRound(pct)));
     }
 }
 
@@ -868,10 +873,23 @@ void GSmartFireStation::refreshDashboard()
         }
     }
     for (int i = 0; i < m_vehicules.size(); i++) {
-        if (m_vehicules[i].disponibilite() != "En maintenance" && m_vehicules[i].maintenanceProche()) {
-            ajouterAlerte(QString("Véhicule %1 : maintenance à prévoir (%2)")
-                              .arg(m_vehicules[i].id())
-                              .arg(m_vehicules[i].dateMaintenance().toString("dd/MM/yyyy")), "#C00000");
+        Vehicule v = m_vehicules[i];
+        QString date = v.dateMaintenance().toString("dd/MM/yyyy");
+        if (v.maintenanceDepassee()) {
+            int retard = -v.joursAvantMaintenance();
+            if (v.disponibilite() == "En mission")
+                ajouterAlerte(QString("Véhicule %1 : maintenance dépassée de %2 j (%3) — à effectuer dès la fin de la mission")
+                                  .arg(v.id()).arg(retard).arg(date), "#C00000");
+            else if (v.disponibilite() == "En maintenance")
+                ajouterAlerte(QString("Véhicule %1 : maintenance dépassée de %2 j (%3) — retiré du service")
+                                  .arg(v.id()).arg(retard).arg(date), "#C00000");
+            else
+                ajouterAlerte(QString("Véhicule %1 : maintenance dépassée de %2 j (%3)")
+                                  .arg(v.id()).arg(retard).arg(date), "#C00000");
+            nbAlertes++;
+        } else if (v.disponibilite() != "En maintenance" && v.maintenanceProche()) {
+            ajouterAlerte(QString("Véhicule %1 : maintenance à prévoir dans %2 j (%3)")
+                              .arg(v.id()).arg(v.joursAvantMaintenance()).arg(date), "#B45309");
             nbAlertes++;
         }
     }
@@ -1555,6 +1573,47 @@ void GSmartFireStation::on_btnDetailsSurcharge_clicked()
 //                        MODULE VÉHICULES
 // =====================================================================
 
+// ----- Normalisation des libellés Oracle <-> interface (comparaisons uniquement) -----
+static QString sansAccents(const QString &texte)
+{
+    QString decompose = texte.normalized(QString::NormalizationForm_D);
+    QString resultat;
+    for (int i = 0; i < decompose.size(); i++) {
+        if (decompose.at(i).category() != QChar::Mark_NonSpacing)
+            resultat += decompose.at(i);
+    }
+    return resultat.trimmed().toLower();
+}
+
+static QString typeNormalise(const QString &brut)
+{
+    QString s = sansAccents(brut);
+    if (s.contains("citerne")) return "Citerne";
+    if (s.contains("echelle")) return "Échelle";
+    if (s.contains("ambulance")) return "Ambulance";
+    if (s.contains("fourgon")) return "Fourgon";
+    if (s.contains("camion")) return "Camion";
+    return brut;
+}
+
+static QString etatNormalise(const QString &brut)
+{
+    QString s = sansAccents(brut);
+    if (s == "bon" || s.startsWith("operationnel")) return "Bon";
+    if (s.contains("hors")) return "Hors service";
+    if (s.contains("control")) return "À contrôler";
+    return brut;
+}
+
+static QString dispoNormalisee(const QString &brut)
+{
+    QString s = sansAccents(brut).replace('_', ' ');
+    if (s == "disponible") return "Disponible";
+    if (s == "en mission") return "En mission";
+    if (s.contains("maint")) return "En maintenance";
+    return brut;
+}
+
 void GSmartFireStation::setupVehicules()
 {
     m_vehiculePropose = -1;
@@ -1607,22 +1666,29 @@ void GSmartFireStation::setupVehicules()
     // Actions remain visible immediately below the vehicle table.
     ui->verticalLayoutVehiculesLeft->insertWidget(ui->verticalLayoutVehiculesLeft->indexOf(m_formVehicule), actionsCrud);
     connect(save, SIGNAL(clicked()), this, SLOT(enregistrerVehiculeInline())); connect(clear, SIGNAL(clicked()), this, SLOT(annulerVehiculeInline()));
+    // Bouton « Choisir un véhicule » (métier innovant) : ouvre une fenêtre de recommandation
+    QPushButton *btnChoisir = new QPushButton("Choisir un véhicule");
+    btnChoisir->setProperty("class", "btnPrimary");
+    btnChoisir->setCursor(Qt::PointingHandCursor);
+    btnChoisir->setToolTip("Proposer le véhicule adapté à une intervention");
+    // Placé sur la ligne des boutons Ajouter / Modifier / Supprimer (la barre de recherche est déjà pleine)
+    crudLayout->insertWidget(3, btnChoisir);
+    connect(btnChoisir, SIGNAL(clicked()), this, SLOT(ouvrirChoixVehicule()));
     ui->btnStatsVehicule->hide(); ui->progressStatVehDispo->hide(); ui->labelStatVehDispo->hide(); ui->labelStatVehMaint->hide();
-    m_vehiculeStatsChart = new PieChartWidget("VÉHICULES", ui->frameStatsVehicules);
-    m_vehiculeStatsChart->setMinimumHeight(390);
-    QScrollArea *statsScroll = new QScrollArea(ui->frameStatsVehicules);
-    statsScroll->setWidgetResizable(true);
-    statsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    statsScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    statsScroll->setFrameShape(QFrame::NoFrame);
-    QWidget *statsContent = new QWidget;
-    QVBoxLayout *statsContentLayout = new QVBoxLayout(statsContent);
-    statsContentLayout->setContentsMargins(4, 4, 4, 4);
-    statsContentLayout->addWidget(m_vehiculeStatsChart);
-    statsScroll->setWidget(statsContent);
-    ui->verticalLayoutStatsVehicules->insertWidget(1, statsScroll, 1);
-    ui->frameStatsVehicules->setMinimumWidth(285);
-    ui->frameStatsVehicules->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+    // Restore the original compact white statistics card (donut + legend + fleet KPIs).
+    ui->verticalLayoutStatsVehicules->setContentsMargins(0,0,0,0);
+    ui->verticalLayoutStatsVehicules->setSpacing(0);
+    ui->labelStatsVehiculesTitle->setStyleSheet("QLabel { background:#1F4E79; color:white; font-size:15px; font-weight:700; padding:15px 16px; border-top-left-radius:11px; border-top-right-radius:11px; }");
+    m_vehiculeStatsChart=new PieChartWidget("VÉHICULES",ui->frameStatsVehicules);
+    QWidget *chartWrap=new QWidget(ui->frameStatsVehicules); QVBoxLayout *chartLayout=new QVBoxLayout(chartWrap); chartLayout->setContentsMargins(16,10,16,8); chartLayout->addWidget(m_vehiculeStatsChart); ui->verticalLayoutStatsVehicules->insertWidget(1,chartWrap);
+    QFrame *sep=new QFrame(ui->frameStatsVehicules); sep->setFrameShape(QFrame::HLine); sep->setStyleSheet("color:#E1E6ED; background:#E1E6ED; max-height:1px;"); ui->verticalLayoutStatsVehicules->addWidget(sep);
+    QWidget *fleet=new QWidget(ui->frameStatsVehicules); QVBoxLayout *fl=new QVBoxLayout(fleet); fl->setContentsMargins(16,10,16,8); fl->setSpacing(6);
+    QLabel *ft=new QLabel(QString::fromUtf8("⌁  État de la flotte"),fleet); ft->setStyleSheet("color:#1F2937;font-weight:600;font-size:13px;"); fl->addWidget(ft);
+    const QString names[]={"Disponibles","En maintenance","Indisponibles"}, colors2[]={"#2E7D32","#C56A0A","#C00000"}, ids[]={"statsAvailable","statsMaintenance","statsUnavailable"};
+    for(int i=0;i<3;++i){QWidget *row=new QWidget(fleet);QHBoxLayout *rl=new QHBoxLayout(row);rl->setContentsMargins(0,0,0,0);rl->setSpacing(7);QLabel *dot=new QLabel(QString::fromUtf8("●"),row);dot->setStyleSheet(QString("color:%1;font-size:17px;").arg(colors2[i]));QLabel *nm=new QLabel(names[i],row);nm->setStyleSheet("color:#334155;font-size:12px;");QLabel *cnt=new QLabel("0",row);cnt->setObjectName(ids[i]+"Count");cnt->setStyleSheet("color:#1F2937;font-weight:600;font-size:12px;");rl->addWidget(dot);rl->addWidget(nm);rl->addStretch(1);rl->addWidget(cnt);fl->addWidget(row);QProgressBar *bar=new QProgressBar(fleet);bar->setObjectName(ids[i]+"Bar");bar->setRange(0,100);bar->setValue(0);bar->setTextVisible(false);bar->setFixedHeight(8);bar->setStyleSheet(QString("QProgressBar{background:#E7ECF2;border:0;border-radius:4px;}QProgressBar::chunk{background:%1;border-radius:4px;}").arg(colors2[i]));fl->addWidget(bar);}
+    ui->verticalLayoutStatsVehicules->addWidget(fleet);
+    QFrame *kpi=new QFrame(ui->frameStatsVehicules);kpi->setStyleSheet("QFrame{background:#EAF2FB;border:1px solid #D4E2F2;border-radius:9px;}");QHBoxLayout *kl=new QHBoxLayout(kpi);kl->setContentsMargins(12,9,12,9);QLabel *ki=new QLabel(QString::fromUtf8("◉"),kpi);ki->setStyleSheet("color:#1F4E79;font-size:20px;background:transparent;border:0;");QLabel *kt=new QLabel("Taux de disponibilité",kpi);kt->setStyleSheet("color:#1F4E79;font-size:11px;background:transparent;border:0;");QLabel *kv=new QLabel("0 %",kpi);kv->setObjectName("statsAvailabilityValue");kv->setStyleSheet("color:#1F4E79;font-size:21px;font-weight:700;background:transparent;border:0;");kl->addWidget(ki);kl->addWidget(kt);kl->addStretch(1);kl->addWidget(kv);QWidget *kw=new QWidget(ui->frameStatsVehicules);QVBoxLayout *kwl=new QVBoxLayout(kw);kwl->setContentsMargins(16,8,16,16);kwl->addWidget(kpi);ui->verticalLayoutStatsVehicules->addWidget(kw);
+    ui->frameStatsVehicules->setMinimumWidth(285);ui->frameStatsVehicules->setMaximumWidth(340);ui->frameStatsVehicules->setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Expanding);
 }
 
 // Données de démonstration (à remplacer plus tard par la base de données)
@@ -1631,22 +1697,35 @@ void GSmartFireStation::chargerVehiculesExemple()
     m_vehicules.clear();
     if (DatabaseManager::isConnected()) {
         QSqlQuery q(DatabaseManager::database());
-        q.prepare("SELECT id_vehicule, immatriculation, type_vehicule, modele, etat, disponibilite, date_maintenance "
+        // TO_CHAR impose un format stable entre Oracle/NLS et Qt : yyyy-MM-dd.
+        // Cela évite les conversions dépendantes de la langue/région du poste.
+        q.prepare("SELECT id_vehicule, immatriculation, type_vehicule, modele, etat, disponibilite, "
+                  "TO_CHAR(date_maintenance, 'YYYY-MM-DD') "
                   "FROM vehicule ORDER BY id_vehicule");
         if (q.exec()) {
             while (q.next()) {
                 QString id = QString("V%1").arg(q.value(0).toInt(), 3, 10, QChar('0'));
-                QString type = q.value(2).toString();
-                if (type.compare("Camion-citerne", Qt::CaseInsensitive) == 0) type = "Citerne";
-                QString etat = q.value(4).toString();
-                if (etat.compare("Operationnel", Qt::CaseInsensitive) == 0 ||
-                    etat.compare("Opérationnel", Qt::CaseInsensitive) == 0) etat = "Bon";
+                QString type = typeNormalise(q.value(2).toString());
+                QString etat = etatNormalise(q.value(4).toString());
+                QString dispo = dispoNormalisee(q.value(5).toString());
                 if (!Vehicule::types().contains(type)) type = "Camion";
                 if (!Vehicule::etats().contains(etat)) etat = "À contrôler";
-                QDate date = q.value(6).toDate();
-                if (!date.isValid()) date = QDate::currentDate().addMonths(3);
+                // La date est renvoyée par Oracle sous forme ISO non ambiguë.
+                const QString dateTexte = q.value(6).toString().trimmed();
+                QDate date = QDate::fromString(dateTexte, "yyyy-MM-dd");
+                // Compatibilité avec d'anciennes versions du pilote Oracle.
+                if (!date.isValid()) date = q.value(6).toDate();
+                if (!date.isValid()) date = q.value(6).toDateTime().date();
+                if (!date.isValid()) {
+                    QMessageBox::warning(this, "Date de maintenance invalide",
+                        QString("La date du véhicule %1 n'a pas pu être lue (%2).")
+                            .arg(id, dateTexte));
+                    // Ne pas inventer une date : conserver une date invalide/ vide
+                    // afin que l'utilisateur puisse corriger la fiche du véhicule.
+                    date = QDate();
+                }
                 m_vehicules.append(Vehicule(id, q.value(1).toString(), type,
-                    q.value(3).toString(), etat, q.value(5).toString(), date));
+                    q.value(3).toString(), etat, dispo, date));
             }
             return;
         }
@@ -1662,6 +1741,58 @@ void GSmartFireStation::chargerVehiculesExemple()
     m_vehicules.append(Vehicule("V005", "127 TU 460", "Ambulance", "Renault", "Bon", "Disponible", QDate(2027, 1, 15)));
     m_vehicules.append(Vehicule("V006", "128 TU 461", "Échelle", "Iveco", "À contrôler", "En maintenance", QDate(2026, 10, 29)));
     m_vehicules.append(Vehicule("V007", "129 TU 462", "Fourgon", "MAN", "Bon", "En maintenance", QDate(2026, 10, 12)));
+}
+
+// ------------------------------------------------------------------ métier avancé
+// MAINTENANCE PRÉVENTIVE AUTOMATIQUE
+// Règle : un véhicule dont la date de maintenance est dépassée est retiré du service :
+//   - disponibilité -> "En maintenance"
+//   - état          -> "À contrôler" (s'il était "Bon")
+// Il n'est alors plus proposé pour les interventions (voir refreshVehiculePropose).
+// Exceptions : un véhicule "En mission" n'est jamais retiré pendant l'intervention
+// (il sera traité dès qu'il ne sera plus en mission) ; un véhicule "Hors service"
+// reste tel quel. Le changement est enregistré dans Oracle si la base est connectée.
+// Retourne la liste (texte) des véhicules modifiés.
+QStringList GSmartFireStation::appliquerMaintenancePreventive()
+{
+    QStringList modifies;
+    QString erreur;
+
+    for (int i = 0; i < m_vehicules.size(); i++) {
+        Vehicule v = m_vehicules[i];
+        if (!v.maintenanceDepassee())
+            continue;
+        if (v.disponibilite() == "En mission" || v.etat() == "Hors service")
+            continue;
+
+        QString nouvelEtat = v.etat();
+        if (nouvelEtat == "Bon")
+            nouvelEtat = "À contrôler";
+        if (v.disponibilite() == "En maintenance" && nouvelEtat == v.etat())
+            continue; // déjà conforme : rien à faire
+
+        if (DatabaseManager::isConnected()) {
+            QSqlQuery q(DatabaseManager::database());
+            q.prepare("UPDATE vehicule SET etat=:etat, disponibilite=:dispo WHERE id_vehicule=:id");
+            q.bindValue(":etat", nouvelEtat);
+            q.bindValue(":dispo", "En maintenance");
+            q.bindValue(":id", v.id().mid(1).toInt());
+            if (!q.exec()) {
+                erreur = q.lastError().text();
+                continue; // la mémoire reste identique à la base
+            }
+        }
+        m_vehicules[i].setEtat(nouvelEtat);
+        m_vehicules[i].setDisponibilite("En maintenance");
+        modifies << QString("%1 — %2 (maintenance prévue le %3)")
+                        .arg(v.id()).arg(v.immatriculation())
+                        .arg(v.dateMaintenance().toString("dd/MM/yyyy"));
+    }
+
+    if (!erreur.isEmpty())
+        QMessageBox::warning(this, "Erreur Oracle",
+            "Mise à jour automatique de la maintenance impossible : " + erreur);
+    return modifies;
 }
 
 // Numéro de la ligne sélectionnée dans le tableau (-1 si aucune)
@@ -1688,6 +1819,21 @@ QString GSmartFireStation::prochainIdVehicule()
 // ------------------------------------------------------------------ affichage
 void GSmartFireStation::refreshVehiculesTable()
 {
+    // Métier avancé : retire automatiquement du service les véhicules dont la
+    // maintenance est dépassée, avant d'afficher le tableau.
+    QStringList retires = appliquerMaintenancePreventive();
+    if (!retires.isEmpty()) {
+        QString intro;
+        if (retires.size() == 1)
+            intro = "La date de maintenance est dépassée : ce véhicule a été placé automatiquement en maintenance (état « À contrôler ») :";
+        else
+            intro = "La date de maintenance est dépassée : ces véhicules ont été placés automatiquement en maintenance (état « À contrôler ») :";
+        QMessageBox::information(this, "Maintenance préventive",
+                                 intro + "\n\n• " + retires.join("\n• "));
+        statusBar()->showMessage(QString("Maintenance préventive : %1 véhicule(s) retiré(s) du service.")
+                                     .arg(retires.size()), 8000);
+    }
+
     int ligneCourante = ui->tableWidgetVehicules->currentRow();
     QColor noir("#1F1F1F");
 
@@ -1713,15 +1859,18 @@ void GSmartFireStation::refreshVehiculesTable()
         else if (v.disponibilite() == "En mission")
             couleurDispo = QColor("#B45309");
 
-        // Date de maintenance : orange si proche, rouge si dépassée
+        // Date de maintenance : rouge si dépassée, orange si prévue dans les 30 prochains jours
         QColor couleurDate = noir;
         bool dateGras = false;
-        if (v.disponibilite() != "En maintenance" && v.maintenanceProche()) {
+        QString infoDate;
+        if (v.maintenanceDepassee()) {
             dateGras = true;
-            if (v.dateMaintenance() < QDate::currentDate())
-                couleurDate = QColor("#C00000");
-            else
-                couleurDate = QColor("#B45309");
+            couleurDate = QColor("#C00000");
+            infoDate = QString("Maintenance dépassée de %1 jour(s)").arg(-v.joursAvantMaintenance());
+        } else if (v.disponibilite() != "En maintenance" && v.maintenanceProche()) {
+            dateGras = true;
+            couleurDate = QColor("#B45309");
+            infoDate = QString("Maintenance dans %1 jour(s)").arg(v.joursAvantMaintenance());
         }
 
         ui->tableWidgetVehicules->setItem(r, 0, creerItem(v.id(), noir, false));
@@ -1730,7 +1879,9 @@ void GSmartFireStation::refreshVehiculesTable()
         ui->tableWidgetVehicules->setItem(r, 3, creerItem(v.modele(), noir, false));
         ui->tableWidgetVehicules->setItem(r, 4, creerItem(v.etat(), couleurEtat, etatGras));
         ui->tableWidgetVehicules->setItem(r, 5, creerItem(v.disponibilite(), couleurDispo, true));
-        ui->tableWidgetVehicules->setItem(r, 6, creerItem(v.dateMaintenance().toString("dd/MM/yyyy"), couleurDate, dateGras));
+        QTableWidgetItem *itemDate = creerItem(v.dateMaintenance().toString("dd/MM/yyyy"), couleurDate, dateGras);
+        itemDate->setToolTip(infoDate);
+        ui->tableWidgetVehicules->setItem(r, 6, itemDate);
     }
     if (ligneCourante >= 0 && ligneCourante < m_vehicules.size())
         ui->tableWidgetVehicules->selectRow(ligneCourante);
@@ -1756,6 +1907,13 @@ void GSmartFireStation::refreshVehiculesTable()
     QStringList types = Vehicule::types(); QStringList labels; QList<int> values;
     for (int t=0; t<types.size(); ++t) { int count=0; for (int i=0;i<m_vehicules.size();++i) if (m_vehicules[i].type()==types[t]) ++count; labels << types[t]; values << count; }
     static_cast<PieChartWidget*>(m_vehiculeStatsChart)->setData(labels, values);
+    const int indisponibles=qMax(0,total-dispo-maintenance);
+    const int pctDispo=total>0?qRound(100.0*dispo/total):0;
+    QLabel *ac=ui->frameStatsVehicules->findChild<QLabel*>("statsAvailableCount"), *mc=ui->frameStatsVehicules->findChild<QLabel*>("statsMaintenanceCount"), *uc=ui->frameStatsVehicules->findChild<QLabel*>("statsUnavailableCount");
+    QProgressBar *ab=ui->frameStatsVehicules->findChild<QProgressBar*>("statsAvailableBar"), *mb=ui->frameStatsVehicules->findChild<QProgressBar*>("statsMaintenanceBar"), *ub=ui->frameStatsVehicules->findChild<QProgressBar*>("statsUnavailableBar");
+    if(ac)ac->setText(QString::number(dispo));if(mc)mc->setText(QString::number(maintenance));if(uc)uc->setText(QString::number(indisponibles));
+    if(ab)ab->setValue(total?qRound(100.0*dispo/total):0);if(mb)mb->setValue(total?qRound(100.0*maintenance/total):0);if(ub)ub->setValue(total?qRound(100.0*indisponibles/total):0);
+    QLabel *av=ui->frameStatsVehicules->findChild<QLabel*>("statsAvailabilityValue");if(av)av->setText(QString("%1 %").arg(pctDispo));
     refreshVehiculePropose();
 }
 
@@ -1984,7 +2142,8 @@ void GSmartFireStation::refreshVehiculePropose()
         int meilleur = -1;
         for (int i = 0; i < m_vehicules.size(); i++) {
             Vehicule v = m_vehicules[i];
-            if (v.type() == typesPreferes[t] && v.disponibilite() == "Disponible" && v.etat() == "Bon") {
+            if (v.type() == typesPreferes[t] && v.disponibilite() == "Disponible" && v.etat() == "Bon"
+                && !v.maintenanceDepassee()) {
                 if (meilleur < 0 || v.dateMaintenance() > m_vehicules[meilleur].dateMaintenance())
                     meilleur = i;
             }
@@ -2002,7 +2161,10 @@ void GSmartFireStation::refreshVehiculePropose()
 
     Vehicule v = m_vehicules[m_vehiculePropose];
     ui->labelVehiculePropose->setText(v.id() + " — " + v.type() + " " + v.modele());
-    ui->labelVehiculeInfo->setText(v.disponibilite() + " • État : " + v.etat());
+    QString info = v.disponibilite() + " • État : " + v.etat();
+    if (v.maintenanceProche())
+        info += QString(" • maintenance dans %1 j").arg(v.joursAvantMaintenance());
+    ui->labelVehiculeInfo->setText(info);
     setLabelClass(ui->labelVehiculeInfo, "textSuccess");
     ui->btnUtiliserVehicule->setEnabled(true);
 }
@@ -2028,4 +2190,363 @@ void GSmartFireStation::on_btnUtiliserVehicule_clicked()
     m_vehicules[m_vehiculePropose].setDisponibilite("En mission");
     refreshVehiculesTable();
     statusBar()->showMessage("Véhicule " + v.id() + " affecté : " + intervention + ".", 6000);
+}
+
+
+// =====================================================================
+//   MÉTIER INNOVANT : CHOIX ADAPTÉ À LA MISSION (fenêtre de recommandation)
+// =====================================================================
+
+// Calcule la recommandation (sans toucher à l'interface).
+// 1) types adaptés à l'intervention, par ordre de préférence ;
+// 2) on écarte : non disponible, hors service / à contrôler, maintenance dépassée ;
+// 3) parmi les candidats : type le mieux classé, puis maintenance la plus éloignée.
+RecommandationVehicule GSmartFireStation::recommanderVehicule(const QString &intervention)
+{
+    RecommandationVehicule r;
+    QStringList typesPreferes = Vehicule::typesPourIntervention(intervention);
+
+    int meilleur = -1;
+    int meilleurRang = 0;
+    int nbCandidats = 0;
+    bool typeTrouve = false;
+    QStringList ecartes;
+
+    for (int i = 0; i < m_vehicules.size(); i++) {
+        Vehicule v = m_vehicules[i];
+        int rang = typesPreferes.indexOf(v.type());
+        if (rang < 0)
+            continue; // type inadapté à cette intervention
+        typeTrouve = true;
+
+        QString raison;
+        if (v.disponibilite() != "Disponible")
+            raison = "non disponible (" + v.disponibilite().toLower() + ")";
+        else if (v.etat() == "Hors service")
+            raison = "hors service";
+        else if (v.etat() != "Bon")
+            raison = "état « " + v.etat() + " »";
+        else if (v.maintenanceDepassee())
+            raison = QString("maintenance dépassée de %1 j").arg(-v.joursAvantMaintenance());
+
+        if (!raison.isEmpty()) {
+            ecartes << QString("%1 (%2) : %3").arg(v.id()).arg(v.type()).arg(raison);
+            continue;
+        }
+        nbCandidats++;
+        if (meilleur < 0 || rang < meilleurRang
+            || (rang == meilleurRang && v.dateMaintenance() > m_vehicules[meilleur].dateMaintenance())) {
+            meilleur = i;
+            meilleurRang = rang;
+        }
+    }
+
+    QString texteEcartes;
+    if (!ecartes.isEmpty()) {
+        QStringList court = ecartes.mid(0, 3);
+        texteEcartes = "Véhicules écartés : " + court.join(" ; ");
+        if (ecartes.size() > 3)
+            texteEcartes += QString(" ; … (+%1)").arg(ecartes.size() - 3);
+    }
+
+    if (meilleur < 0) {
+        r.titre = "Aucun véhicule adapté disponible";
+        r.info = "⚠ Aucun véhicule disponible en bon état pour « " + intervention + " ».";
+        r.avertissement = true;
+        r.explication = "Types adaptés : " + typesPreferes.join(", ") + ".";
+        if (!typeTrouve)
+            r.explication += "\nLe parc ne contient aucun véhicule de ces types.";
+        else
+            r.explication += "\n" + texteEcartes;
+        return r;
+    }
+
+    Vehicule v = m_vehicules[meilleur];
+    r.index = meilleur;
+    r.titre = v.id() + " — " + v.type() + " " + v.modele();
+    r.info = "✔ Véhicule recommandé : " + v.disponibilite() + ", état " + v.etat();
+    if (v.maintenanceProche()) {
+        r.info += QString(" — maintenance dans %1 j").arg(v.joursAvantMaintenance());
+        r.avertissement = true;
+    }
+    r.details = QString("Immatriculation : %1\nType : %2\nModèle : %3\nÉtat : %4\nDisponibilité : %5\nMaintenance : %6")
+                    .arg(v.immatriculation()).arg(v.type()).arg(v.modele()).arg(v.etat())
+                    .arg(v.disponibilite()).arg(v.dateMaintenance().toString("dd/MM/yyyy"));
+
+    QString pourquoi = "Pourquoi ce choix : ";
+    if (meilleurRang == 0)
+        pourquoi += QString("le type « %1 » est le premier choix pour « %2 »").arg(v.type()).arg(intervention);
+    else {
+        QStringList prioritaires = typesPreferes.mid(0, meilleurRang);
+        pourquoi += QString("le type « %1 » est un choix de repli (types prioritaires indisponibles : %2)")
+                        .arg(v.type()).arg(prioritaires.join(", "));
+    }
+    pourquoi += ", le véhicule est disponible, en bon état et sa maintenance n'est pas dépassée";
+    if (nbCandidats > 1)
+        pourquoi += QString(" ; sa maintenance est la plus éloignée parmi %1 candidats").arg(nbCandidats);
+    pourquoi += ".";
+    if (!texteEcartes.isEmpty())
+        pourquoi += "\n" + texteEcartes;
+    r.explication = pourquoi;
+    return r;
+}
+
+// Affectation PERSISTANTE dans Oracle (tables existantes : MISSION, MISSION_VEHICULE, VEHICULE).
+// Retourne : 1 = enregistré ; 0 = refusé ou erreur (voir 'message') ;
+//           -1 = aucune mission ouverte de ce type ; 2 = annulé par l'utilisateur.
+int GSmartFireStation::affecterVehiculeOracle(QWidget *parent, int indexVehicule, const QString &intervention, QString &message)
+{
+    Vehicule v = m_vehicules[indexVehicule];
+    int idVehicule = v.id().mid(1).toInt();
+    QSqlDatabase db = DatabaseManager::database();
+
+    // 1) Missions ouvertes (planifiées ou en cours) du type d'intervention choisi
+    QSqlQuery qm(db);
+    if (!qm.exec("SELECT id_mission, intitule, type_intervention, lieu, etat FROM mission ORDER BY id_mission")) {
+        message = "Lecture de MISSION impossible : " + qm.lastError().text();
+        return 0;
+    }
+    QList<int> idsMissions;
+    QStringList libelles;
+    QString typeVoulu = sansAccents(intervention);
+    while (qm.next()) {
+        QString etat = sansAccents(qm.value(4).toString()).replace('_', ' ');
+        bool ouverte = etat.contains("planif") || etat.contains("en cours");
+        QString typeMission = sansAccents(qm.value(2).toString());
+        bool memeType = !typeMission.isEmpty()
+                        && (typeMission == typeVoulu || typeMission.contains(typeVoulu) || typeVoulu.contains(typeMission));
+        if (!ouverte || !memeType)
+            continue;
+        idsMissions << qm.value(0).toInt();
+        libelles << QString("M%1 — %2 (%3, %4)").arg(qm.value(0).toInt()).arg(qm.value(1).toString())
+                        .arg(qm.value(3).toString()).arg(qm.value(4).toString());
+    }
+    if (idsMissions.isEmpty())
+        return -1;
+
+    int choix = 0;
+    if (idsMissions.size() > 1) {
+        bool ok = false;
+        QString selection = QInputDialog::getItem(parent, "Mission à renforcer",
+            "Plusieurs missions ouvertes correspondent. Choisissez la mission :", libelles, 0, false, &ok);
+        if (!ok)
+            return 2;
+        choix = libelles.indexOf(selection);
+        if (choix < 0)
+            choix = 0;
+    }
+    int idMission = idsMissions[choix];
+
+    // 2) Revérifier le véhicule dans Oracle
+    QSqlQuery qv(db);
+    qv.prepare("SELECT disponibilite FROM vehicule WHERE id_vehicule = :id");
+    qv.bindValue(":id", idVehicule);
+    if (!qv.exec() || !qv.next()) {
+        message = "Véhicule introuvable dans Oracle.";
+        return 0;
+    }
+    QString dispoBrute = qv.value(0).toString();
+    if (dispoNormalisee(dispoBrute) != "Disponible") {
+        message = v.id() + " n'est plus disponible dans Oracle (" + dispoBrute + "). Affectation refusée.";
+        return 0;
+    }
+
+    // 3) Conflit : véhicule déjà engagé dans une AUTRE mission en cours
+    QSqlQuery qc(db);
+    qc.prepare("SELECT m.id_mission, m.intitule FROM mission_vehicule mv "
+               "JOIN mission m ON m.id_mission = mv.id_mission "
+               "WHERE mv.id_vehicule = :v AND m.id_mission <> :m "
+               "AND UPPER(REPLACE(REPLACE(TRIM(m.etat),'_',' '),'-',' ')) IN ('EN COURS','ENCOURS')");
+    qc.bindValue(":v", idVehicule);
+    qc.bindValue(":m", idMission);
+    if (qc.exec() && qc.next()) {
+        message = QString("Conflit : %1 est déjà affecté à la mission M%2 (%3), actuellement en cours.")
+                      .arg(v.id()).arg(qc.value(0).toInt()).arg(qc.value(1).toString());
+        return 0;
+    }
+
+    // 4) Doublon : déjà lié à cette mission ?
+    QSqlQuery qd(db);
+    qd.prepare("SELECT COUNT(*) FROM mission_vehicule WHERE id_mission = :m AND id_vehicule = :v");
+    qd.bindValue(":m", idMission);
+    qd.bindValue(":v", idVehicule);
+    bool dejaLie = qd.exec() && qd.next() && qd.value(0).toInt() > 0;
+
+    // 5) Écriture : lien MISSION_VEHICULE (si absent) + disponibilité du véhicule
+    bool transaction = db.transaction();
+    bool insere = false;
+    QString erreur;
+    if (!dejaLie) {
+        QSqlQuery qi(db);
+        qi.prepare("INSERT INTO mission_vehicule (id_mission, id_vehicule) VALUES (:m, :v)");
+        qi.bindValue(":m", idMission);
+        qi.bindValue(":v", idVehicule);
+        if (qi.exec())
+            insere = true;
+        else
+            erreur = "Insertion dans MISSION_VEHICULE impossible : " + qi.lastError().text();
+    }
+    if (erreur.isEmpty()) {
+        QSqlQuery qu(db);
+        qu.prepare("UPDATE vehicule SET disponibilite = :nouvelle WHERE id_vehicule = :id AND disponibilite = :ancienne");
+        qu.bindValue(":nouvelle", "En mission");
+        qu.bindValue(":id", idVehicule);
+        qu.bindValue(":ancienne", dispoBrute);
+        if (!qu.exec())
+            erreur = "Mise à jour de VEHICULE impossible : " + qu.lastError().text();
+        else if (qu.numRowsAffected() != 1)
+            erreur = "Le véhicule vient d'être modifié par quelqu'un d'autre : affectation annulée.";
+    }
+    if (!erreur.isEmpty()) {
+        if (transaction) {
+            db.rollback();
+        } else if (insere) {
+            QSqlQuery qx(db);
+            qx.prepare("DELETE FROM mission_vehicule WHERE id_mission = :m AND id_vehicule = :v");
+            qx.bindValue(":m", idMission);
+            qx.bindValue(":v", idVehicule);
+            qx.exec();
+        }
+        message = erreur;
+        return 0;
+    }
+    if (transaction && !db.commit()) {
+        QString detail = db.lastError().text();
+        db.rollback();
+        message = "Validation (COMMIT) impossible : " + detail;
+        return 0;
+    }
+
+    message = QString("%1 affecté à la mission %2 — enregistré dans Oracle (MISSION_VEHICULE + disponibilité « En mission »).")
+                  .arg(v.id()).arg(libelles[choix].section(" (", 0, 0));
+    if (dejaLie)
+        message += " (le lien existait déjà : disponibilité corrigée)";
+    return 1;
+}
+
+// Clic sur « Utiliser ce véhicule » dans la fenêtre : confirmation, puis affectation
+void GSmartFireStation::affecterVehiculePropose(QWidget *parent, int index, const QString &intervention)
+{
+    if (index < 0 || index >= m_vehicules.size())
+        return;
+    Vehicule v = m_vehicules[index];
+
+    if (v.disponibilite() != "Disponible") {
+        QMessageBox::warning(parent, "Affectation impossible", v.id() + " n'est plus disponible.");
+        return;
+    }
+    int reponse = QMessageBox::question(parent, "Affecter le véhicule",
+        "Affecter " + v.id() + " (" + v.type() + " " + v.modele() + ", " + v.immatriculation()
+        + ") à l'intervention « " + intervention + " » ?");
+    if (reponse != QMessageBox::Yes)
+        return;
+
+    // Mode démonstration (pas de base) : changement en mémoire uniquement
+    if (!DatabaseManager::isConnected()) {
+        m_vehicules[index].setDisponibilite("En mission");
+        refreshVehiculesTable();
+        statusBar()->showMessage("Véhicule " + v.id() + " affecté : " + intervention
+                                 + " (mode démonstration : NON enregistré dans Oracle).", 8000);
+        return;
+    }
+
+    QString message;
+    int resultat = affecterVehiculeOracle(parent, index, intervention, message);
+    if (resultat == 2)
+        return;
+    if (resultat == 1) {
+        chargerVehiculesExemple(); // relit Oracle
+        refreshVehiculesTable();
+        statusBar()->showMessage(message, 10000);
+        QMessageBox::information(parent, "Affectation enregistrée", message);
+        return;
+    }
+    if (resultat == -1) {
+        int temp = QMessageBox::question(parent, "Aucune mission correspondante",
+            "Aucune mission ouverte de type « " + intervention + " » n'existe dans Oracle :\n"
+            "l'affectation ne peut pas être enregistrée en base.\n\n"
+            "Réserver quand même ce véhicule TEMPORAIREMENT (démonstration, non enregistré) ?");
+        if (temp == QMessageBox::Yes) {
+            m_vehicules[index].setDisponibilite("En mission");
+            refreshVehiculesTable();
+            statusBar()->showMessage("Véhicule " + v.id() + " réservé temporairement (NON enregistré dans Oracle).", 8000);
+        }
+        return;
+    }
+    QMessageBox::warning(parent, "Affectation refusée", message);
+    chargerVehiculesExemple(); // resynchronise avec Oracle
+    refreshVehiculesTable();
+}
+
+// Fenêtre « Choix adapté à la mission »
+void GSmartFireStation::ouvrirChoixVehicule()
+{
+    QDialog dlg(this);
+    dlg.setWindowTitle("Choix adapté à la mission");
+    dlg.setMinimumWidth(480);
+    dlg.setStyleSheet("QDialog { background:#FFFFFF; } QLabel { color:#1F1F1F; }");
+
+    QVBoxLayout *lay = new QVBoxLayout(&dlg);
+    lay->setContentsMargins(20, 18, 20, 18);
+    lay->setSpacing(10);
+
+    QLabel *titre = new QLabel("Choix adapté à la mission");
+    titre->setStyleSheet("font-size:18px; font-weight:bold; color:#1F4E79;");
+    lay->addWidget(titre);
+
+    lay->addWidget(new QLabel("Type d'intervention :"));
+    QComboBox *combo = new QComboBox;
+    for (int i = 0; i < ui->comboIntervention->count(); i++)
+        combo->addItem(ui->comboIntervention->itemText(i));
+    lay->addWidget(combo);
+
+    QLabel *propose = new QLabel;
+    propose->setWordWrap(true);
+    propose->setStyleSheet("font-size:15px; font-weight:bold; color:#1F4E79; margin-top:8px;");
+    QLabel *info = new QLabel;
+    info->setWordWrap(true);
+    QLabel *details = new QLabel;
+    details->setWordWrap(true);
+    details->setStyleSheet("background:#F4F7FB; border:1px solid #D7DEE8; border-radius:6px; padding:8px;");
+    QLabel *explication = new QLabel;
+    explication->setWordWrap(true);
+    explication->setStyleSheet("color:#1F4E79; font-size:12px;");
+    lay->addWidget(propose);
+    lay->addWidget(info);
+    lay->addWidget(details);
+    lay->addWidget(explication);
+
+    QPushButton *btnUtiliser = new QPushButton("Utiliser ce véhicule");
+    btnUtiliser->setCursor(Qt::PointingHandCursor);
+    btnUtiliser->setStyleSheet("QPushButton { background:#1F4E79; color:#FFFFFF; border-radius:5px; padding:8px 16px; font-weight:bold; }"
+                               "QPushButton:disabled { background:#A9BCD0; }");
+    QPushButton *btnFermer = new QPushButton("Fermer");
+    btnFermer->setCursor(Qt::PointingHandCursor);
+    QHBoxLayout *boutons = new QHBoxLayout;
+    boutons->addStretch(1);
+    boutons->addWidget(btnUtiliser);
+    boutons->addWidget(btnFermer);
+    lay->addLayout(boutons);
+
+    int indexReco = -1;
+    auto majRecommandation = [&]() {
+        RecommandationVehicule r = recommanderVehicule(combo->currentText());
+        indexReco = r.index;
+        propose->setText(r.titre);
+        info->setText(r.info);
+        info->setStyleSheet(r.avertissement ? "color:#B45309; font-weight:bold;" : "color:#2E7D32; font-weight:bold;");
+        details->setText(r.details);
+        details->setVisible(!r.details.isEmpty());
+        explication->setText(r.explication);
+        btnUtiliser->setEnabled(r.index >= 0);
+    };
+    connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged), &dlg, [&](int) { majRecommandation(); });
+    connect(btnUtiliser, &QPushButton::clicked, &dlg, [&]() {
+        affecterVehiculePropose(&dlg, indexReco, combo->currentText());
+        majRecommandation(); // l'état des véhicules a pu changer
+    });
+    connect(btnFermer, &QPushButton::clicked, &dlg, &QDialog::accept);
+
+    majRecommandation();
+    dlg.exec();
 }

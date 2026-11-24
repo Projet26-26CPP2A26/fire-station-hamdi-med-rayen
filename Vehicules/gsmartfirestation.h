@@ -145,6 +145,9 @@ public:
 
     // Vrai si la maintenance est prévue dans les 30 prochains jours (ou déjà dépassée)
     bool maintenanceProche() const;
+    // Métier avancé (maintenance préventive) : date dépassée / jours restants
+    bool maintenanceDepassee() const;
+    int joursAvantMaintenance() const; // négatif si la date est dépassée
 
     // Listes de valeurs autorisées
     static QStringList types();
@@ -317,6 +320,17 @@ class GSmartFireStation;
 }
 QT_END_NAMESPACE
 
+// Résultat de la recommandation d'un véhicule pour une intervention (fenêtre « Choisir un véhicule »)
+struct RecommandationVehicule
+{
+    int index = -1;            // numéro du véhicule recommandé dans la liste (-1 = aucun)
+    QString titre;             // ex. « V004 — Citerne MAN »
+    QString info;              // ligne de statut
+    QString details;           // immatriculation, type, modèle, état, disponibilité
+    QString explication;       // pourquoi ce véhicule (et lesquels ont été écartés)
+    bool avertissement = false;
+};
+
 // Fenêtre principale (G = Gestion). UN SEUL fichier .ui : les vues sont les pages
 // d'un QStackedWidget (page 0 = Dashboard, 1 = Personnel, 2 = Véhicules).
 //
@@ -373,6 +387,7 @@ private slots:
     void on_btnUtiliserVehicule_clicked();
     void enregistrerVehiculeInline();
     void annulerVehiculeInline();
+    void ouvrirChoixVehicule(); // métier innovant : fenêtre « Choix adapté à la mission »
 
 private:
     // ----- Navigation + Dashboard -----
@@ -423,6 +438,7 @@ private:
     void chargerVehiculesExemple();
     void refreshVehiculesTable();
     void refreshVehiculePropose();
+    QStringList appliquerMaintenancePreventive(); // métier avancé : retrait automatique du service
     void filtrerVehicules();
     int vehiculeSelectionne();
     QString prochainIdVehicule();
@@ -431,6 +447,11 @@ private:
     StatCritere statVehiculesParDispo();
     QList<Vehicule> m_vehicules;
     int m_vehiculePropose; // numéro du véhicule proposé pour la mission (-1 = aucun)
+
+    // ----- Métier innovant véhicules : choix adapté à la mission -----
+    RecommandationVehicule recommanderVehicule(const QString &intervention);
+    int affecterVehiculeOracle(QWidget *parent, int indexVehicule, const QString &intervention, QString &message);
+    void affecterVehiculePropose(QWidget *parent, int index, const QString &intervention);
 
     // ----- Outils communs -----
     QTableWidgetItem *creerItem(const QString &texte, const QColor &couleur, bool gras);
