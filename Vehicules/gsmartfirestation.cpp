@@ -1,5 +1,6 @@
 #include "gsmartfirestation.h"
 #include "ui_gsmartfirestation.h"
+#include "maintenancemail.h"
 
 // ===== databasemanager =====
 #include <QInputDialog>
@@ -676,6 +677,7 @@ void VehiculeDialog::valider()
 #include <QPixmap>
 #include <QProgressBar>
 #include <QStandardPaths>
+#include <QSettings>
 #include <QStatusBar>
 #include <QStyle>
 #include <QTableWidget>
@@ -689,6 +691,9 @@ GSmartFireStation::GSmartFireStation(QWidget *parent)
      : QMainWindow(parent), ui(new Ui::GSmartFireStation), m_personnelEditIndex(-1)
 {
     ui->setupUi(this);
+    QSettings reglagesMail(QSettings::IniFormat, QSettings::UserScope,
+                           "SmartFireStation", "VehiculesMaintenanceMail");
+    m_echecMailAutomatique = reglagesMail.value("echecAutomatique", false).toBool();
 #ifdef STANDALONE_PERSONNEL
     // Projet individuel Personnel : garder uniquement son interface accessible.
     ui->btnNavDashboard->hide();
@@ -735,6 +740,11 @@ GSmartFireStation::GSmartFireStation(QWidget *parent)
 
 GSmartFireStation::~GSmartFireStation()
 {
+    if (m_clientMailAutomatique) {
+        m_clientMailAutomatique->disconnect(this);
+        delete m_clientMailAutomatique;
+        m_clientMailAutomatique = nullptr;
+    }
     DatabaseManager::close();
     delete ui;
 }
@@ -1658,7 +1668,7 @@ void GSmartFireStation::setupVehicules()
     QWidget *actionsCrud = new QWidget;
     QHBoxLayout *crudLayout = new QHBoxLayout(actionsCrud);
     crudLayout->setContentsMargins(0, 8, 0, 0);
-    crudLayout->setSpacing(10);
+    crudLayout->setSpacing(6);
     crudLayout->addWidget(ui->btnAjouterVehicule);
     crudLayout->addWidget(ui->btnModifierVehicule);
     crudLayout->addWidget(ui->btnSupprimerVehicule);
@@ -1674,6 +1684,15 @@ void GSmartFireStation::setupVehicules()
     // Placé sur la ligne des boutons Ajouter / Modifier / Supprimer (la barre de recherche est déjà pleine)
     crudLayout->insertWidget(3, btnChoisir);
     connect(btnChoisir, SIGNAL(clicked()), this, SLOT(ouvrirChoixVehicule()));
+
+    // Alertes e-mail de maintenance : ajout en code pour ne pas modifier le .ui.
+    QPushButton *btnAlertesMail = new QPushButton("Alertes e-mail…");
+    btnAlertesMail->setProperty("class", "btnSecondary");
+    btnAlertesMail->setCursor(Qt::PointingHandCursor);
+    btnAlertesMail->setToolTip("Configurer les alertes e-mail de maintenance");
+    crudLayout->insertWidget(4, btnAlertesMail);
+    connect(btnAlertesMail, SIGNAL(clicked()), this, SLOT(ouvrirAlertesMail()));
+
     ui->btnStatsVehicule->hide(); ui->progressStatVehDispo->hide(); ui->labelStatVehDispo->hide(); ui->labelStatVehMaint->hide();
     // Restore the original compact white statistics card (donut + legend + fleet KPIs).
     ui->verticalLayoutStatsVehicules->setContentsMargins(0,0,0,0);
@@ -1795,6 +1814,70 @@ QStringList GSmartFireStation::appliquerMaintenancePreventive()
     return modifies;
 }
 
+// Envoie un seul e-mail groupé pour les maintenances dépassées non encore notifiées.
+void GSmartFireStation::verifierAlertesMaintenance()
+{
+    if (m_envoiMailAutomatique || m_echecMailAutomatique)
+        return;
+
+    const ReglagesMaintenanceMail reglages = ReglagesMaintenanceMail::charger();
+    if (!reglages.automatique || !reglages.estConfigure())
+        return;
+
+    QSettings notifications(QSettings::IniFormat, QSettings::UserScope,
+                            "SmartFireStation", "VehiculesMaintenanceMail");
+    QList<Vehicule> aNotifier;
+    for (const Vehicule &vehicule : m_vehicules) {
+        if (vehicule.etat() == "Hors service" || !vehicule.maintenanceDepassee())
+            continue;
+        if (!notifications.value(cleNotificationMaintenance(vehicule), false).toBool())
+            aNotifier.append(vehicule);
+    }
+    if (aNotifier.isEmpty())
+        return;
+
+    m_envoiMailAutomatique = true;
+    MaintenanceMailClient *client = new MaintenanceMailClient(
+        reglages, sujetAlerteMaintenance(aNotifier.size()),
+        corpsAlerteMaintenance(aNotifier), this);
+    m_clientMailAutomatique = client;
+
+    connect(client, &MaintenanceMailClient::succes, this, [this, aNotifier]() {
+        // Le serveur a accepté DATA : seulement maintenant on mémorise les notifications.
+        QSettings notifications(QSettings::IniFormat, QSettings::UserScope,
+                            "SmartFireStation", "VehiculesMaintenanceMail");
+        for (const Vehicule &vehicule : aNotifier)
+            notifications.setValue(cleNotificationMaintenance(vehicule), true);
+        notifications.sync();
+        statusBar()->showMessage(QString("Alerte e-mail de maintenance envoyée pour %1 véhicule(s).")
+                                     .arg(aNotifier.size()), 8000);
+    });
+    connect(client, &MaintenanceMailClient::echec, this, [this](const QString &message) {
+        m_echecMailAutomatique = true;
+        QSettings reglages(QSettings::IniFormat, QSettings::UserScope,
+                           "SmartFireStation", "VehiculesMaintenanceMail");
+        reglages.setValue("echecAutomatique", true);
+        reglages.sync();
+        statusBar()->showMessage("Échec de l'alerte e-mail de maintenance : " + message, 12000);
+        QMessageBox::warning(this, "Alerte e-mail de maintenance",
+            message + "\n\nLes tentatives automatiques sont arrêtées. "
+            "Enregistrez à nouveau les réglages e-mail pour les reprendre.");
+    });
+    connect(client, &QObject::destroyed, this, [this]() {
+        m_clientMailAutomatique = nullptr;
+        m_envoiMailAutomatique = false;
+        if (!m_echecMailAutomatique)
+            verifierAlertesMaintenance(); // rattrape les véhicules ajoutés pendant l'envoi
+    });
+
+    if (!client->envoyer()) {
+        client->disconnect(this);
+        m_clientMailAutomatique = nullptr;
+        m_envoiMailAutomatique = false;
+        client->deleteLater();
+    }
+}
+
 // Numéro de la ligne sélectionnée dans le tableau (-1 si aucune)
 int GSmartFireStation::vehiculeSelectionne()
 {
@@ -1822,6 +1905,7 @@ void GSmartFireStation::refreshVehiculesTable()
     // Métier avancé : retire automatiquement du service les véhicules dont la
     // maintenance est dépassée, avant d'afficher le tableau.
     QStringList retires = appliquerMaintenancePreventive();
+    verifierAlertesMaintenance();
     if (!retires.isEmpty()) {
         QString intro;
         if (retires.size() == 1)
@@ -2549,4 +2633,15 @@ void GSmartFireStation::ouvrirChoixVehicule()
 
     majRecommandation();
     dlg.exec();
+}
+
+// Ouvre les réglages e-mail ; après enregistrement, les alertes sont réautorisées
+// et les éventuelles maintenances en attente sont vérifiées immédiatement.
+void GSmartFireStation::ouvrirAlertesMail()
+{
+    MaintenanceMailDialog dialogue(this);
+    if (dialogue.exec() == QDialog::Accepted) {
+        m_echecMailAutomatique = false;
+        verifierAlertesMaintenance();
+    }
 }

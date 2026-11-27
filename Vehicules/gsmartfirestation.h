@@ -313,6 +313,7 @@ class QGroupBox;
 class QWidget;
 class QDateEdit;
 class PieChartWidget;
+class MaintenanceMailClient;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -388,6 +389,7 @@ private slots:
     void enregistrerVehiculeInline();
     void annulerVehiculeInline();
     void ouvrirChoixVehicule(); // métier innovant : fenêtre « Choix adapté à la mission »
+    void ouvrirAlertesMail();
 
 private:
     // ----- Navigation + Dashboard -----
@@ -439,6 +441,7 @@ private:
     void refreshVehiculesTable();
     void refreshVehiculePropose();
     QStringList appliquerMaintenancePreventive(); // métier avancé : retrait automatique du service
+    void verifierAlertesMaintenance();
     void filtrerVehicules();
     int vehiculeSelectionne();
     QString prochainIdVehicule();
@@ -447,6 +450,9 @@ private:
     StatCritere statVehiculesParDispo();
     QList<Vehicule> m_vehicules;
     int m_vehiculePropose; // numéro du véhicule proposé pour la mission (-1 = aucun)
+    MaintenanceMailClient *m_clientMailAutomatique = nullptr;
+    bool m_envoiMailAutomatique = false;
+    bool m_echecMailAutomatique = false;
 
     // ----- Métier innovant véhicules : choix adapté à la mission -----
     RecommandationVehicule recommanderVehicule(const QString &intervention);
